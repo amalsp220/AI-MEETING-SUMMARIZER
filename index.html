@@ -298,8 +298,6 @@
         // Configuration
         const API_BASE_URL = "https://ai-meeting-summarizer-backend-eq9b.onrender.com";
 
-
-        
         // DOM Elements
         const fileInput = document.getElementById('fileInput');
         const dropZone = document.getElementById('dropZone');
@@ -351,7 +349,6 @@
 
         // File upload handling
         dropZone.addEventListener('click', (e) => {
-            // Prevent triggering file input when clicking the browse button
             if (e.target !== browseBtn) {
                 fileInput.click();
             }
@@ -369,7 +366,6 @@
                 processBtn.disabled = false;
                 currentAudioFile = file;
                 
-                // Reset other input methods
                 recordingUI.classList.add('hidden');
                 recordBtn.classList.remove('hidden');
             }
@@ -417,7 +413,6 @@
                 processBtn.disabled = false;
                 currentAudioFile = file;
                 
-                // Reset other input methods
                 recordingUI.classList.add('hidden');
                 recordBtn.classList.remove('hidden');
             }
@@ -429,14 +424,12 @@
 
         async function startRecording() {
             try {
-                // Initialize audio context and analyzer
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 analyser = audioContext.createAnalyser();
                 analyser.fftSize = 32;
                 const bufferLength = analyser.frequencyBinCount;
                 dataArray = new Uint8Array(bufferLength);
                 
-                // Create visualizer bars
                 audioVisualizer.innerHTML = '';
                 for (let i = 0; i < bufferLength; i++) {
                     const bar = document.createElement('div');
@@ -444,32 +437,24 @@
                     audioVisualizer.appendChild(bar);
                 }
                 
-                // Get microphone access
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream);
                 
-                // Connect audio source to analyzer
                 const source = audioContext.createMediaStreamSource(stream);
                 source.connect(analyser);
                 
-                // Start recording
                 audioChunks = [];
-                mediaRecorder.ondataavailable = (e) => {
-                    audioChunks.push(e.data);
-                };
+                mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
                 
                 mediaRecorder.start();
                 recordBtn.classList.add('hidden');
                 recordingUI.classList.remove('hidden');
                 
-                // Start timer
                 recordingStartTime = Date.now();
                 updateRecordingTime();
                 
-                // Start visualization
                 visualize();
                 
-                // Handle stop
                 mediaRecorder.onstop = () => {
                     cancelAnimationFrame(animationId);
                     const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
@@ -489,8 +474,6 @@
                 mediaRecorder.stop();
                 recordingUI.classList.add('hidden');
                 recordBtn.classList.remove('hidden');
-                
-                // Stop all tracks
                 mediaRecorder.stream.getTracks().forEach(track => track.stop());
             }
         }
@@ -528,37 +511,34 @@
             processBtn.disabled = true;
             
             try {
-                // Step 1: Transcribe audio
                 updateProcessingStep('Transcribing audio...');
+                console.log('Sending audio file:', currentAudioFile.name);
                 const transcript = await transcribeAudio(currentAudioFile);
+                console.log('Transcript received:', transcript);
                 currentTranscript = transcript;
                 
-                // Display transcript
                 emptyTranscript.classList.add('hidden');
                 transcriptContent.classList.remove('hidden');
                 transcriptText.innerHTML = formatTranscript(transcript);
                 
-                // Step 2: Generate summary
                 updateProcessingStep('Generating summary...');
                 const summary = await generateSummary(transcript);
+                console.log('Summary received:', summary);
                 currentSummary = summary;
                 
-                // Display summary
                 emptySummary.classList.add('hidden');
                 summaryContent.classList.remove('hidden');
                 summaryText.innerHTML = `<p class="text-black">${summary.replace(/\n/g, '</p><p class="text-black">')}</p>`;
                 
-                // Step 3: Extract action items
                 updateProcessingStep('Extracting action items...');
                 const actionItems = await extractActionItems(transcript);
+                console.log('Action items received:', actionItems);
                 currentActionItems = actionItems;
                 
-                // Display action items
                 emptyActions.classList.add('hidden');
                 actionsContent.classList.remove('hidden');
                 renderActionItems(actionItems);
                 
-                // Enable Q&A
                 emptyQA.classList.add('hidden');
                 qaContent.classList.remove('hidden');
                 
@@ -568,7 +548,7 @@
                 }, 1000);
             } catch (error) {
                 console.error('Error processing meeting:', error);
-                updateProcessingStep('Error processing meeting');
+                updateProcessingStep('Error: ' + error.message);
                 setTimeout(() => {
                     loadingState.classList.add('hidden');
                 }, 2000);
@@ -585,16 +565,13 @@
             formData.append('file', audioFile);
             formData.append('model', 'whisper-large-v3');
             
-            const response = await fetch(`${GROQ_API_URL}/audio/transcriptions`, {
+            const response = await fetch(`${API_BASE_URL}/audio/transcriptions`, {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${GROQ_API_KEY}`
-                },
                 body: formData
             });
             
             if (!response.ok) {
-                throw new Error('Failed to transcribe audio');
+                throw new Error('Failed to transcribe audio: ' + (await response.text()));
             }
             
             const data = await response.json();
@@ -602,11 +579,10 @@
         }
 
         async function generateSummary(transcript) {
-            const response = await fetch(`${GROQ_API_URL}/chat/completions`, {
+            const response = await fetch(`${API_BASE_URL}/chat/completions`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${GROQ_API_KEY}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     model: 'llama3-8b-8192',
@@ -625,7 +601,7 @@
             });
             
             if (!response.ok) {
-                throw new Error('Failed to generate summary');
+                throw new Error('Failed to generate summary: ' + (await response.text()));
             }
             
             const data = await response.json();
@@ -633,11 +609,10 @@
         }
 
         async function extractActionItems(transcript) {
-            const response = await fetch(`${GROQ_API_URL}/chat/completions`, {
+            const response = await fetch(`${API_BASE_URL}/chat/completions`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${GROQ_API_KEY}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     model: 'llama3-8b-8192',
@@ -657,12 +632,11 @@
             });
             
             if (!response.ok) {
-                throw new Error('Failed to extract action items');
+                throw new Error('Failed to extract action items: ' + (await response.text()));
             }
             
             const data = await response.json();
             try {
-                // Parse the JSON response and extract the action items
                 const jsonResponse = JSON.parse(data.choices[0].message.content);
                 return jsonResponse.action_items || [];
             } catch (e) {
@@ -672,11 +646,10 @@
         }
 
         async function answerQuestion(question, context) {
-            const response = await fetch(`${GROQ_API_URL}/chat/completions`, {
+            const response = await fetch(`${API_BASE_URL}/chat/completions`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${GROQ_API_KEY}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     model: 'llama3-8b-8192',
@@ -695,7 +668,7 @@
             });
             
             if (!response.ok) {
-                throw new Error('Failed to answer question');
+                throw new Error('Failed to answer question: ' + (await response.text()));
             }
             
             const data = await response.json();
@@ -704,7 +677,6 @@
 
         // Helper functions
         function formatTranscript(text) {
-            // Simple formatting - in a real app you might use speaker diarization
             return `<p class="text-black">${text.replace(/\n/g, '</p><p class="text-black">')}</p>`;
         }
 
@@ -744,16 +716,10 @@
         // Tab switching
         tabButtons.forEach(button => {
             button.addEventListener('click', () => {
-                // Remove active class from all buttons
                 tabButtons.forEach(btn => btn.classList.remove('active', 'border-[#B6F500]', 'text-[#B6F500]'));
+                button.classList.add('active', 'border-[#B6F500', 'text-[#B6F500]');
                 
-                // Add active class to clicked button
-                button.classList.add('active', 'border-[#B6F500]', 'text-[#B6F500]');
-                
-                // Hide all tab contents
                 tabContents.forEach(content => content.classList.add('hidden'));
-                
-                // Show selected tab content
                 const tabId = button.getAttribute('data-tab');
                 document.getElementById(`${tabId}-tab`).classList.remove('hidden');
             });
@@ -769,7 +735,6 @@
             const question = questionInput.value.trim();
             if (!question || !currentTranscript) return;
             
-            // Add question to UI
             const questionDiv = document.createElement('div');
             questionDiv.className = 'bg-[#FFFADC] p-4 rounded-lg fade-in';
             questionDiv.innerHTML = `
@@ -790,7 +755,6 @@
             
             try {
                 const answer = await answerQuestion(question, currentTranscript);
-                
                 questionDiv.innerHTML = `
                     <div class="font-medium text-black mb-2 flex items-center">
                         <i class="fas fa-question-circle text-[#B6F500] mr-2"></i>
@@ -863,5 +827,4 @@
         tabButtons[0].classList.add('active', 'border-[#B6F500]', 'text-[#B6F500]');
     </script>
 </body>
-
 </html>
