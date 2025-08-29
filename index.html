@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Meeting Summarizer & Action Item Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .waveform {
+            background: linear-gradient(90deg, #B6F500 0%, #B6F500 var(--progress, 0%), #e5e7eb var(--progress, 0%), #e5e7eb 100%);
+        }
+        .action-item:hover .action-controls {
+            opacity: 1;
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        #audioVisualizer {
+            display: flex;
+            align-items: flex-end;
+            height: 60px;
+            gap: 2px;
+        }
+        .bar {
+            background: #B6F500;
+            width: 4px;
+            border-radius: 2px;
+            transition: height 0.1s ease;
+        }
+        .shine-button {
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        .shine-button::after {
+            content: '';
+            position: absolute;
+            top: -110%;
+            left: -210%;
+            width: 200%;
+            height: 200%;
+            opacity: 0;
+            transform: rotate(30deg);
+            background: rgba(255, 255, 255, 0.13);
+            background: linear-gradient(
+                to right, 
+                rgba(255, 255, 255, 0.13) 0%,
+                rgba(255, 255, 255, 0.13) 77%,
+                rgba(255, 255, 255, 0.5) 92%,
+                rgba(255, 255, 255, 0.0) 100%
+            );
+        }
+        .shine-button:hover::after {
+            opacity: 1;
+            top: -30%;
+            left: -30%;
+            transition-property: left, top, opacity;
+            transition-duration: 0.7s, 0.7s, 0.15s;
+            transition-timing-function: ease;
+        }
+        .shine-button:active::after {
+            opacity: 0;
+        }
+        .shine-hover {
+            position: relative;
+            overflow: hidden;
+        }
+        .shine-hover::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -100%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(
+                120deg,
+                transparent,
+                rgba(255, 255, 255, 0.3),
+                transparent
+            );
+            transition: left 0.5s ease;
+        }
+        .shine-hover:hover::before {
+            left: 100%;
+        }
+        .custom-logo {
+            width: 30px;
+            height: 30px;
+            margin-right: 12px;
+            animation: rotateLogo 10s linear infinite;
+        }
+        @keyframes rotateLogo {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body class="bg-[#FFFADC] min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-black flex items-center">
+                <svg class="custom-logo" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="45" fill="#B6F500"/>
+                    <path d="M30 70 C40 80, 60 80, 70 70" stroke="#A4DD00" stroke-width="6" stroke-linecap="round"/>
+                    <path d="M40 50 H60 M50 40 V60" stroke="#A4DD00" stroke-width="6" stroke-linecap="round"/>
+                    <rect x="80" y="20" width="10" height="20" rx="4" fill="#A4DD00"/>
+                    <path d="M20 60 C20 40, 80 40, 80 60 L70 70 L30 70 Z" fill="#FFFADC"/>
+                </svg>
+                AI MEETING SUMMARIZER
+            </h1>
+            <p class="text-black">Upload recordings or record live to get transcripts, summaries, and action items</p>
+        </header>
+
+        <!-- Main Content -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left Panel - Input Section -->
+            <div class="lg:col-span-1 bg-white rounded-xl shadow-md p-6 border border-gray-200">
+                <h2 class="text-xl font-semibold mb-4 text-black">Upload or Record Meeting</h2>
+                
+                <!-- File Upload -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-black mb-2">Upload Recording</label>
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-[#B6F500] transition-colors duration-200 shine-hover" id="dropZone">
+                        <input type="file" id="fileInput" class="hidden" accept=".mp3,.wav">
+                        <i class="fas fa-cloud-upload-alt text-3xl text-[#B6F500] mb-2"></i>
+                        <p class="text-black mb-2">Drag & drop files or</p>
+                        <button id="browseBtn" class="shine-button bg-[#B6F500] hover:bg-[#A4DD00] text-black py-2 px-4 rounded-lg transition-colors duration-200">Browse</button>
+                        <p class="text-xs text-gray-600 mt-2">Supports MP3, WAV (max 50MB)</p>
+                    </div>
+                    <div id="fileName" class="text-sm text-black mt-2 hidden"></div>
+                </div>
+
+                <!-- Or Divider -->
+                <div class="flex items-center my-6">
+                    <div class="flex-grow border-t border-gray-300"></div>
+                    <span class="mx-4 text-gray-600">or</span>
+                    <div class="flex-grow border-t border-gray-300"></div>
+                </div>
+
+                <!-- Live Recording -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-black mb-2">Record Live</label>
+                    <button id="recordBtn" class="shine-button w-full bg-[#B6F500] hover:bg-[#A4DD00] text-black py-2 px-4 rounded-lg flex items-center justify-center transition-colors duration-200">
+                        <i class="fas fa-microphone mr-2"></i>
+                        Start Recording
+                    </button>
+                    <div id="recordingUI" class="hidden mt-4">
+                        <div id="audioVisualizer" class="mb-2"></div>
+                        <div class="flex justify-between text-xs text-black">
+                            <span id="recordingTime">00:00</span>
+                            <span id="recordingStatus">Recording...</span>
+                        </div>
+                        <div class="flex justify-center mt-4">
+                            <button id="stopRecordingBtn" class="shine-button bg-[#B6F500] hover:bg-[#A4DD00] text-black py-2 px-4 rounded-lg flex items-center transition-colors duration-200">
+                                <i class="fas fa-stop mr-2"></i>
+                                Stop Recording
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Process Button -->
+                <button id="processBtn" class="shine-button w-full bg-[#B6F500] hover:bg-[#A4DD00] text-black py-3 px-4 rounded-lg font-medium flex items-center justify-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    <i class="fas fa-magic mr-2"></i>
+                    Summarize Meeting
+                </button>
+
+                <!-- Loading State -->
+                <div id="loadingState" class="hidden mt-6 p-4 bg-[#FFFADC] rounded-lg">
+                    <div class="flex items-center">
+                        <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-[#B6F500] mr-3"></div>
+                        <span class="text-black">Processing your meeting...</span>
+                    </div>
+                    <div class="mt-2 text-xs text-black">
+                        <span id="processingStep">Transcribing audio</span>
+                        <span class="animate-pulse">...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Results -->
+            <div class="lg:col-span-2">
+                <!-- Tab Navigation -->
+                <div class="flex border-b border-gray-200 mb-6">
+                    <button class="tab-btn py-2 px-4 font-medium text-black border-b-2 border-transparent hover:text-[#B6F500] transition-colors duration-200 active shine-hover" data-tab="transcript">Transcript</button>
+                    <button class="tab-btn py-2 px-4 font-medium text-black border-b-2 border-transparent hover:text-[#B6F500] transition-colors duration-200 shine-hover" data-tab="summary">Summary</button>
+                    <button class="tab-btn py-2 px-4 font-medium text-black border-b-2 border-transparent hover:text-[#B6F500] transition-colors duration-200 shine-hover" data-tab="actions">Action Items</button>
+                    <button class="tab-btn py-2 px-4 font-medium text-black border-b-2 border-transparent hover:text-[#B6F500] transition-colors duration-200 shine-hover" data-tab="qa">Q&A</button>
+                </div>
+
+                <!-- Tab Contents -->
+                <div class="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200">
+                    <!-- Transcript Tab -->
+                    <div id="transcript-tab" class="tab-content p-6">
+                        <div class="text-center py-12" id="emptyTranscript">
+                            <i class="fas fa-comment-alt text-4xl text-gray-300 mb-4"></i>
+                            <h3 class="text-lg font-medium text-black">No transcript available</h3>
+                            <p class="text-gray-600 mt-1">Upload or record a meeting to see the transcript</p>
+                        </div>
+                        <div id="transcriptContent" class="hidden">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-medium text-black">Meeting Transcript</h3>
+                                <button id="downloadTranscript" class="text-[#B6F500] text-sm flex items-center shine-hover">
+                                    <i class="fas fa-download mr-1"></i> Download
+                                </button>
+                            </div>
+                            <div class="bg-[#FFFADC] p-4 rounded-lg max-h-96 overflow-y-auto" id="transcriptText">
+                                <!-- Transcript will appear here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Summary Tab -->
+                    <div id="summary-tab" class="tab-content hidden p-6">
+                        <div class="text-center py-12" id="emptySummary">
+                            <i class="fas fa-file-alt text-4xl text-gray-300 mb-4"></i>
+                            <h3 class="text-lg font-medium text-black">No summary available</h3>
+                            <p class="text-gray-600 mt-1">Process a meeting to generate the summary</p>
+                        </div>
+                        <div id="summaryContent" class="hidden">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-medium text-black">Meeting Summary</h3>
+                                <button id="copySummary" class="text-[#B6F500] text-sm flex items-center shine-hover">
+                                    <i class="fas fa-copy mr-1"></i> Copy
+                                </button>
+                            </div>
+                            <div class="bg-[#FFFADC] p-4 rounded-lg" id="summaryText">
+                                <!-- Summary will appear here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Items Tab -->
+                    <div id="actions-tab" class="tab-content hidden p-6">
+                        <div class="text-center py-12" id="emptyActions">
+                            <i class="fas fa-tasks text-4xl text-gray-300 mb-4"></i>
+                            <h3 class="text-lg font-medium text-black">No action items</h3>
+                            <p class="text-gray-600 mt-1">Process a meeting to extract action items</p>
+                        </div>
+                        <div id="actionsContent" class="hidden">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-medium text-black">Action Items</h3>
+                                <div class="flex space-x-2">
+                                    <button id="exportCSV" class="text-[#B6F500] text-sm flex items-center shine-hover">
+                                        <i class="fas fa-download mr-1"></i> CSV
+                                    </button>
+                                    <button id="exportTasks" class="text-[#B6F500] text-sm flex items-center shine-hover">
+                                        <i class="fas fa-external-link-alt mr-1"></i> Export
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="space-y-3" id="actionItemsList">
+                                <!-- Action items will appear here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Q&A Tab -->
+                    <div id="qa-tab" class="tab-content hidden p-6">
+                        <div class="text-center py-12" id="emptyQA">
+                            <i class="fas fa-question-circle text-4xl text-gray-300 mb-4"></i>
+                            <h3 class="text-lg font-medium text-black">No transcript available</h3>
+                            <p class="text-gray-600 mt-1">Process a meeting to ask questions about it</p>
+                        </div>
+                        <div id="qaContent" class="hidden">
+                            <div class="mb-6">
+                                <div class="flex items-center mb-4">
+                                    <h3 class="font-medium text-black">Ask about this meeting</h3>
+                                </div>
+                                <div class="relative">
+                                    <input type="text" id="questionInput" placeholder="What were the key decisions made?" class="w-full border border-gray-300 rounded-lg py-2 px-4 pr-12 focus:outline-none focus:ring-2 focus:ring-[#B6F500] focus:border-transparent">
+                                    <button id="askQuestionBtn" class="absolute right-2 top-1/2 transform -translate-y-1/2 text-[#B6F500] hover:text-[#A4DD00] shine-hover">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="qaResults" class="space-y-4">
+                                <!-- Q&A will appear here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = "https://your-backend.onrender.com"; // Render backend
+
+        
+        // DOM Elements
+        const fileInput = document.getElementById('fileInput');
+        const dropZone = document.getElementById('dropZone');
+        const browseBtn = document.getElementById('browseBtn');
+        const fileName = document.getElementById('fileName');
+        const recordBtn = document.getElementById('recordBtn');
+        const recordingUI = document.getElementById('recordingUI');
+        const stopRecordingBtn = document.getElementById('stopRecordingBtn');
+        const audioVisualizer = document.getElementById('audioVisualizer');
+        const recordingTime = document.getElementById('recordingTime');
+        const processBtn = document.getElementById('processBtn');
+        const loadingState = document.getElementById('loadingState');
+        const processingStep = document.getElementById('processingStep');
+        
+        // Tab elements
+        const tabButtons = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+        
+        // Results elements
+        const emptyTranscript = document.getElementById('emptyTranscript');
+        const transcriptContent = document.getElementById('transcriptContent');
+        const transcriptText = document.getElementById('transcriptText');
+        const emptySummary = document.getElementById('emptySummary');
+        const summaryContent = document.getElementById('summaryContent');
+        const summaryText = document.getElementById('summaryText');
+        const emptyActions = document.getElementById('emptyActions');
+        const actionsContent = document.getElementById('actionsContent');
+        const actionItemsList = document.getElementById('actionItemsList');
+        const emptyQA = document.getElementById('emptyQA');
+        const qaContent = document.getElementById('qaContent');
+        const questionInput = document.getElementById('questionInput');
+        const askQuestionBtn = document.getElementById('askQuestionBtn');
+        const qaResults = document.getElementById('qaResults');
+        
+        // Audio recording variables
+        let mediaRecorder;
+        let audioChunks = [];
+        let recordingStartTime;
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let animationId;
+        
+        // App state
+        let currentAudioFile = null;
+        let currentTranscript = '';
+        let currentSummary = '';
+        let currentActionItems = [];
+
+        // File upload handling
+        dropZone.addEventListener('click', (e) => {
+            // Prevent triggering file input when clicking the browse button
+            if (e.target !== browseBtn) {
+                fileInput.click();
+            }
+        });
+        
+        browseBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) {
+                const file = e.target.files[0];
+                fileName.textContent = `Selected: ${file.name}`;
+                fileName.classList.remove('hidden');
+                processBtn.disabled = false;
+                currentAudioFile = file;
+                
+                // Reset other input methods
+                recordingUI.classList.add('hidden');
+                recordBtn.classList.remove('hidden');
+            }
+        });
+
+        // Drag and drop
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight() {
+            dropZone.classList.add('border-[#B6F500]');
+            dropZone.classList.remove('border-gray-300');
+        }
+
+        function unhighlight() {
+            dropZone.classList.remove('border-[#B6F500]');
+            dropZone.classList.add('border-gray-300');
+        }
+
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            fileInput.files = files;
+            
+            if (files.length) {
+                const file = files[0];
+                fileName.textContent = `Selected: ${file.name}`;
+                fileName.classList.remove('hidden');
+                processBtn.disabled = false;
+                currentAudioFile = file;
+                
+                // Reset other input methods
+                recordingUI.classList.add('hidden');
+                recordBtn.classList.remove('hidden');
+            }
+        }
+
+        // Audio recording
+        recordBtn.addEventListener('click', startRecording);
+        stopRecordingBtn.addEventListener('click', stopRecording);
+
+        async function startRecording() {
+            try {
+                // Initialize audio context and analyzer
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 32;
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                
+                // Create visualizer bars
+                audioVisualizer.innerHTML = '';
+                for (let i = 0; i < bufferLength; i++) {
+                    const bar = document.createElement('div');
+                    bar.className = 'bar';
+                    audioVisualizer.appendChild(bar);
+                }
+                
+                // Get microphone access
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                
+                // Connect audio source to analyzer
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+                
+                // Start recording
+                audioChunks = [];
+                mediaRecorder.ondataavailable = (e) => {
+                    audioChunks.push(e.data);
+                };
+                
+                mediaRecorder.start();
+                recordBtn.classList.add('hidden');
+                recordingUI.classList.remove('hidden');
+                
+                // Start timer
+                recordingStartTime = Date.now();
+                updateRecordingTime();
+                
+                // Start visualization
+                visualize();
+                
+                // Handle stop
+                mediaRecorder.onstop = () => {
+                    cancelAnimationFrame(animationId);
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    currentAudioFile = new File([audioBlob], 'recording.wav', { type: 'audio/wav' });
+                    fileName.textContent = 'Recording saved';
+                    fileName.classList.remove('hidden');
+                    processBtn.disabled = false;
+                };
+            } catch (error) {
+                console.error('Error starting recording:', error);
+                alert('Could not access microphone. Please check permissions.');
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                recordingUI.classList.add('hidden');
+                recordBtn.classList.remove('hidden');
+                
+                // Stop all tracks
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            }
+        }
+
+        function updateRecordingTime() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+                const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                const secs = (elapsed % 60).toString().padStart(2, '0');
+                recordingTime.textContent = `${mins}:${secs}`;
+                setTimeout(updateRecordingTime, 1000);
+            }
+        }
+
+        function visualize() {
+            analyser.getByteFrequencyData(dataArray);
+            const bars = audioVisualizer.querySelectorAll('.bar');
+            
+            bars.forEach((bar, i) => {
+                const value = dataArray[i] / 255;
+                const height = value * 60;
+                bar.style.height = `${height}px`;
+            });
+            
+            animationId = requestAnimationFrame(visualize);
+        }
+
+        // Process button
+        processBtn.addEventListener('click', processMeeting);
+
+        async function processMeeting() {
+            if (!currentAudioFile) return;
+            
+            loadingState.classList.remove('hidden');
+            processBtn.disabled = true;
+            
+            try {
+                // Step 1: Transcribe audio
+                updateProcessingStep('Transcribing audio...');
+                const transcript = await transcribeAudio(currentAudioFile);
+                currentTranscript = transcript;
+                
+                // Display transcript
+                emptyTranscript.classList.add('hidden');
+                transcriptContent.classList.remove('hidden');
+                transcriptText.innerHTML = formatTranscript(transcript);
+                
+                // Step 2: Generate summary
+                updateProcessingStep('Generating summary...');
+                const summary = await generateSummary(transcript);
+                currentSummary = summary;
+                
+                // Display summary
+                emptySummary.classList.add('hidden');
+                summaryContent.classList.remove('hidden');
+                summaryText.innerHTML = `<p class="text-black">${summary.replace(/\n/g, '</p><p class="text-black">')}</p>`;
+                
+                // Step 3: Extract action items
+                updateProcessingStep('Extracting action items...');
+                const actionItems = await extractActionItems(transcript);
+                currentActionItems = actionItems;
+                
+                // Display action items
+                emptyActions.classList.add('hidden');
+                actionsContent.classList.remove('hidden');
+                renderActionItems(actionItems);
+                
+                // Enable Q&A
+                emptyQA.classList.add('hidden');
+                qaContent.classList.remove('hidden');
+                
+                updateProcessingStep('Done!');
+                setTimeout(() => {
+                    loadingState.classList.add('hidden');
+                }, 1000);
+            } catch (error) {
+                console.error('Error processing meeting:', error);
+                updateProcessingStep('Error processing meeting');
+                setTimeout(() => {
+                    loadingState.classList.add('hidden');
+                }, 2000);
+            }
+        }
+
+        function updateProcessingStep(message) {
+            processingStep.textContent = message;
+        }
+
+        // API Functions
+        async function transcribeAudio(audioFile) {
+            const formData = new FormData();
+            formData.append('file', audioFile);
+            formData.append('model', 'whisper-large-v3');
+            
+            const response = await fetch(`${GROQ_API_URL}/audio/transcriptions`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${GROQ_API_KEY}`
+                },
+                body: formData
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to transcribe audio');
+            }
+            
+            const data = await response.json();
+            return data.text;
+        }
+
+        async function generateSummary(transcript) {
+            const response = await fetch(`${GROQ_API_URL}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${GROQ_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: 'llama3-8b-8192',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'You are a helpful meeting assistant. Generate a concise summary of the following meeting transcript. Focus on key decisions, important points, and outcomes.'
+                        },
+                        {
+                            role: 'user',
+                            content: transcript
+                        }
+                    ],
+                    temperature: 0.7
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to generate summary');
+            }
+            
+            const data = await response.json();
+            return data.choices[0].message.content;
+        }
+
+        async function extractActionItems(transcript) {
+            const response = await fetch(`${GROQ_API_URL}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${GROQ_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: 'llama3-8b-8192',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'You are a helpful meeting assistant. Extract action items from the following meeting transcript. Format each as: "Description: [task], Owner: [person], Due: [date or timeframe]". Return as a JSON array.'
+                        },
+                        {
+                            role: 'user',
+                            content: transcript
+                        }
+                    ],
+                    temperature: 0.7,
+                    response_format: { type: 'json_object' }
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to extract action items');
+            }
+            
+            const data = await response.json();
+            try {
+                // Parse the JSON response and extract the action items
+                const jsonResponse = JSON.parse(data.choices[0].message.content);
+                return jsonResponse.action_items || [];
+            } catch (e) {
+                console.error('Error parsing action items:', e);
+                return [];
+            }
+        }
+
+        async function answerQuestion(question, context) {
+            const response = await fetch(`${GROQ_API_URL}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${GROQ_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: 'llama3-8b-8192',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `You are a helpful meeting assistant. Answer questions based on the following meeting transcript. Be concise and accurate. If you don't know the answer, say so. Meeting transcript: ${context}`
+                        },
+                        {
+                            role: 'user',
+                            content: question
+                        }
+                    ],
+                    temperature: 0.3
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to answer question');
+            }
+            
+            const data = await response.json();
+            return data.choices[0].message.content;
+        }
+
+        // Helper functions
+        function formatTranscript(text) {
+            // Simple formatting - in a real app you might use speaker diarization
+            return `<p class="text-black">${text.replace(/\n/g, '</p><p class="text-black">')}</p>`;
+        }
+
+        function renderActionItems(items) {
+            actionItemsList.innerHTML = '';
+            
+            items.forEach((item, index) => {
+                const itemElement = document.createElement('div');
+                itemElement.className = 'action-item bg-white border border-gray-200 rounded-lg p-3 hover:shadow-sm transition-shadow duration-200 relative shine-hover';
+                itemElement.innerHTML = `
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0 mt-1 mr-3">
+                            <input type="checkbox" class="rounded text-[#B6F500]">
+                        </div>
+                        <div class="flex-grow">
+                            <h4 class="font-medium text-black">${item.Description || 'Action item'}</h4>
+                            ${item.Details ? `<p class="text-sm text-gray-600">${item.Details}</p>` : ''}
+                            <div class="mt-2 flex items-center text-xs text-gray-600">
+                                ${item.Owner ? `<span class="mr-3"><i class="fas fa-user mr-1"></i> ${item.Owner}</span>` : ''}
+                                ${item.Due ? `<span><i class="far fa-calendar-alt mr-1"></i> Due: ${item.Due}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="action-controls absolute right-3 top-3 opacity-0 transition-opacity duration-200 flex space-x-1">
+                        <button class="text-gray-400 hover:text-[#B6F500] p-1">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="text-gray-400 hover:text-red-500 p-1" data-index="${index}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                actionItemsList.appendChild(itemElement);
+            });
+        }
+
+        // Tab switching
+        tabButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                // Remove active class from all buttons
+                tabButtons.forEach(btn => btn.classList.remove('active', 'border-[#B6F500]', 'text-[#B6F500]'));
+                
+                // Add active class to clicked button
+                button.classList.add('active', 'border-[#B6F500]', 'text-[#B6F500]');
+                
+                // Hide all tab contents
+                tabContents.forEach(content => content.classList.add('hidden'));
+                
+                // Show selected tab content
+                const tabId = button.getAttribute('data-tab');
+                document.getElementById(`${tabId}-tab`).classList.remove('hidden');
+            });
+        });
+
+        // Q&A functionality
+        askQuestionBtn.addEventListener('click', askQuestion);
+        questionInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') askQuestion();
+        });
+
+        async function askQuestion() {
+            const question = questionInput.value.trim();
+            if (!question || !currentTranscript) return;
+            
+            // Add question to UI
+            const questionDiv = document.createElement('div');
+            questionDiv.className = 'bg-[#FFFADC] p-4 rounded-lg fade-in';
+            questionDiv.innerHTML = `
+                <div class="font-medium text-black mb-2 flex items-center">
+                    <i class="fas fa-question-circle text-[#B6F500] mr-2"></i>
+                    ${question}
+                </div>
+                <div class="text-black pl-6">
+                    <div class="flex items-center py-2">
+                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-[#B6F500] mr-2"></div>
+                        <span>Thinking...</span>
+                    </div>
+                </div>
+            `;
+            
+            qaResults.prepend(questionDiv);
+            questionInput.value = '';
+            
+            try {
+                const answer = await answerQuestion(question, currentTranscript);
+                
+                questionDiv.innerHTML = `
+                    <div class="font-medium text-black mb-2 flex items-center">
+                        <i class="fas fa-question-circle text-[#B6F500] mr-2"></i>
+                        ${question}
+                    </div>
+                    <div class="text-black pl-6">
+                        ${answer}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error answering question:', error);
+                questionDiv.querySelector('.text-black').innerHTML = 'Sorry, I encountered an error answering your question.';
+            }
+        }
+
+        // Download transcript
+        document.getElementById('downloadTranscript').addEventListener('click', () => {
+            if (!currentTranscript) return;
+            
+            const blob = new Blob([currentTranscript], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'meeting-transcript.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        // Copy summary
+        document.getElementById('copySummary').addEventListener('click', () => {
+            if (!currentSummary) return;
+            
+            navigator.clipboard.writeText(currentSummary)
+                .then(() => {
+                    const copyBtn = document.getElementById('copySummary');
+                    const originalText = copyBtn.innerHTML;
+                    copyBtn.innerHTML = '<i class="fas fa-check mr-1"></i> Copied!';
+                    setTimeout(() => {
+                        copyBtn.innerHTML = originalText;
+                    }, 2000);
+                })
+                .catch(err => {
+                    console.error('Failed to copy text:', err);
+                });
+        });
+
+        // Export CSV
+        document.getElementById('exportCSV').addEventListener('click', () => {
+            if (!currentActionItems.length) return;
+            
+            let csvContent = "Description,Owner,Due,Details\n";
+            currentActionItems.forEach(item => {
+                csvContent += `"${item.Description || ''}","${item.Owner || ''}","${item.Due || ''}","${item.Details || ''}"\n`;
+            });
+            
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'action-items.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        // Initialize first tab as active
+        tabButtons[0].classList.add('active', 'border-[#B6F500]', 'text-[#B6F500]');
+    </script>
+</body>
+</html>
